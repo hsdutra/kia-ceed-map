@@ -2,70 +2,112 @@
 description: Regras
 ---
 
-# 📡 Estrutura do Projeto (Guia para Antigravit)
+# 📡 CAN Radio Simulation – Guia Oficial do Projeto
 
-Este documento define a organização oficial do projeto e as regras que devem ser seguidas pelo Antigravit ao analisar, modificar ou gerar código.
+Este documento define a estrutura oficial do projeto, as regras técnicas obrigatórias e o workflow que deve ser seguido ao analisar, modificar ou gerar código. Este ficheiro é a referência estrutural e técnica principal.
 
 ---
 
-# 📁 Estrutura de Pastas
+# 📁 Estrutura Oficial de Pastas
 
-```
-/imagens
-    /fm presets
-    /prints
-
-/logs
-
-/simulador
-
-MANUAL_TECNICO_V2.md
-```
+- `/imagens` – Capturas do rádio OEM e presets.
+- `/logs` – Capturas brutas do barramento CAN.
+- `/simulador` – Implementação funcional (PowerShell/Scripts).
+- `/docs/manual/` – Histórico de versões do manual técnico.
+- `MANUAL_TECNICO.md` – Fonte de Verdade (Raiz).
+- `README.md` – Visão geral do repositório.
 
 ---
 
 # 📂 imagens/
+
 Contém material visual utilizado para análise comportamental do rádio original.
 
-## 📁 imagens/fm presets
-Contém imagens das estações FM mapeadas manualmente.
-**Regra:** Ao analisar mudanças de estação FM, considerar apenas transições entre presets mapeados para evitar ruído.
+## 📁 fm_presets
 
-## 📁 imagens/prints
-Contém prints do ecrã original do carro (AM/FM/Bluetooth).
-**Regra:** Sempre validar se a mudança visual corresponde a uma mudança real de frame CAN.
+Estações FM mapeadas manualmente.
+
+- **Regra**: Ao analisar mudanças de frequência, considerar apenas transições entre presets mapeados para eliminar ruído estatístico.
+
+## 📁 prints
+
+Capturas do ecrã original (AM / FM / Bluetooth / GPS).
+
+- **Regra**: Sempre validar se a mudança visual no ecrã OEM corresponde a uma alteração detectável no frame CAN.
 
 ---
 
 # 📂 logs/
-Pasta destinada aos logs exportados do SavvyCAN (.csv).
-**Regra:** Sempre filtrar ruído antes de tirar conclusões. Priorizar análise por diferença de modo e estabilidade estatística.
+
+Repositório de logs exportados do SavvyCAN (`.csv`).
+
+## 📋 Regras de Nomenclatura
+
+Os arquivos devem seguir o padrão: `AAAA-MM-DD_[MODO]_[EVENTO].csv`
+_Exemplo: 2025-02-23_FM_PRESET_CHANGE_01.csv_
+
+## 📋 Regras de Análise
+
+- Filtrar ruído constante antes de tirar conclusões.
+- Confirmar se a alteração ocorre em RX ou TX.
+- **Identificar Cycle Time**: Determinar a frequência de repetição do ID (ex: 100ms, 500ms).
+- Nunca concluir com base em evento isolado; aplicar validação de diferença de modo.
 
 ---
 
 # 📂 simulador/
-Pasta principal do simulador funcional (PowerShell).
-**Regra:** Nunca alterar mapeamentos estáveis sem validação por log comparativo.
+
+Pasta principal do simulador funcional.
+
+**Regra Crítica**: Nunca alterar mapeamentos considerados **ESTÁVEIS** sem:
+
+1. Log comparativo entre a versão anterior e a nova.
+2. Confirmação de que o tempo de ciclo (timing) está correto.
+3. Validação visual no cluster/painel.
 
 ---
 
-# 📄 MANUAL_TECNICO_V2.md
-Documento mestre consolidado com:
-* IDs mapeados (0x114, 0x4E8, 0x485)
-* Fórmulas de calibração AM/FM
-* Protocolos ISO-TP e timing
+# 📄 MANUAL_TECNICO.md (Fonte de Verdade)
 
-**Regra:** Antes de criar nova hipótese ou modificar mapeamentos, consultar obrigatoriamente este manual.
+Este é o manual oficial, único e vigente. Localizado na raiz do projeto.
+
+## 🛠️ Classificação de Maturidade dos IDs
+
+Todo ID mapeado deve receber um status:
+
+- **HIPÓTESE**: ID identificado, comportamento observado mas não totalmente isolado.
+- **ESTÁVEL**: ID com comportamento consistente, fórmulas validadas e timing preciso.
+- **LEGACY**: ID que foi utilizado anteriormente mas provado incorreto ou substituído.
+
+## 📚 Versionamento
+
+- Versões anteriores (V1, V2, etc.) devem ser movidas para `/docs/manual/`.
+- O manual na raiz é sempre a consolidação de todas as hipóteses validadas.
 
 ---
 
 # 🔬 Diretrizes Técnicas Obrigatórias
 
-1. **Sempre validar:** Se o ID é constante ou variável e se a mudança ocorre em RX ou TX.
-2. **Evitar conclusões precipitadas:** Confirmar mudanças de bytes com logs comparativos e prints visuais.
-3. **Padrão de Análise:** Isolar evento -> Filtrar IDs repetitivos -> Validar consistência -> Confirmar com print visual.
+1. **Constância**: Validar se o ID é constante (Heartbeat) ou originado por evento.
+2. **Direção**: Confirmar se a alteração ocorre em RX ou TX.
+3. **Isolamento**: Isolar o byte específico que sofre alteração antes de analisar o payload.
+4. **Timing**: Documentar o tempo de ciclo para evitar "flickering" na simulação.
+5. **Consistência**: Validar o comportamento em pelo menos 3 capturas diferentes.
+
+---
+
+# 🧪 Padrão Oficial de Análise (Workflow)
+
+1. **Isolar Evento** (Acionar botão/função específica).
+2. **Filtrar Ruído** (Remover IDs de tráfego comum).
+3. **Identificar IDs** (Localizar candidatos e medir Cycle Time).
+4. **Validar Consistência** (Repetir o evento e confirmar o padrão).
+5. **Teste de Regressão** (Garantir que funções estáveis não foram quebradas).
+6. **Comparar c/ Manual** (Verificar se entra em conflito com mapeamentos existentes).
+7. **Documentar no Manual** (Atualizar status de Hipótese para Estável).
 
 ---
 
 # 🎯 Objetivo Final do Projeto
-Criar uma simulação fiel do comportamento CAN do rádio original do Kia Ceed 2015, permitindo que uma central Android se comporte exatamente como o rádio OEM em termos de comunicação com o painel (cluster).
+
+Criar uma simulação fiel do comportamento CAN do rádio original do Kia Ceed 2015, permitindo que uma central Android reproduza exatamente o comportamento OEM na comunicação com o painel (cluster), com foco em precisão, estabilidade e evidência técnica.
