@@ -207,36 +207,35 @@ class TxEngine:
             print("==================================================")
             return
 
-        tbl = self.rx_engine.id_table
-
-        # --- GRUPO: TIME ---
-        print(" [TIME]")
-        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
-        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
-        for can_id, entry in tbl.items():
-            if entry["group"] != "TIME": continue
-            raw = entry["last_raw"][:28].ljust(28)
-            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
-
-        print("--------------------------------------------------")
-
-        # --- GRUPO: RADIO ---
-        print(" [RADIO]")
-        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
-        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
-        for can_id, entry in tbl.items():
-            if entry["group"] != "RADIO": continue
-            raw = entry["last_raw"][:28].ljust(28)
-            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
-
-        print("--------------------------------------------------")
-
         # --- Decoded (valores interpretados) ---
         sync_st = self.rx_engine.last_sync_time or "---"
         print(f" [CLOCK]  Sinc: {sync_st}")
         print(f" [RÁDIO]  Modo:  {self.rx_engine.radio_mode}")
         print(f" [RÁDIO]  Freq:  {self.rx_engine.radio_freq}")
         print(f" [RÁDIO]  Label: '{self.rx_engine.radio_label}'")
+
+        tbl = self.rx_engine.id_table
+
+        # --- GRUPO: TIME ---
+        print("--------------------------------------------------")
+        print(" [TIME]")
+        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
+        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
+        for can_id in [0x5E2, 0x12F]:
+            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---"})
+            raw = entry["last_raw"][:28].ljust(28)
+            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
+
+        # --- GRUPO: RADIO ---
+        print("--------------------------------------------------")
+        print(" [RADIO]")
+        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
+        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
+        radio_ids = [0x100, 0x114, 0x115, 0x169, 0x1EB, 0x44D, 0x120, 0x506, 0x4E8, 0x485]
+        for can_id in radio_ids:
+            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---"})
+            raw = entry["last_raw"][:28].ljust(28)
+            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
 
         if self.rx_engine.last_error:
             print(f" [ALERTA] {self.rx_engine.last_error}")
