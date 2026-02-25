@@ -53,6 +53,9 @@ function Build12FFrame($dateTime) {
 # --- Loop Interativo ---
 function Run-TimeSimulator($sp, $mode) {
     $currentDateTime = Get-Date
+    if ($mode -eq "MANUAL") {
+        $currentDateTime = Get-Date -Year $currentDateTime.Year -Month $currentDateTime.Month -Day $currentDateTime.Day -Hour $currentDateTime.Hour -Minute $currentDateTime.Minute -Second 0
+    }
     $lastSend = 0
     $fields = @("DAY", "MONTH", "YEAR", "HOUR", "MINUTE")
     $fieldIdx = 0 # Inicia no Dia
@@ -90,7 +93,7 @@ function Run-TimeSimulator($sp, $mode) {
             if ($mode -eq "MANUAL" -and $fields[$fieldIdx] -eq "HOUR")   { Write-Host -NoNewline "$($currentDateTime.Hour.ToString('00'))" -BackgroundColor DarkCyan -ForegroundColor White } else { Write-Host -NoNewline "$($currentDateTime.Hour.ToString('00'))" }
             Write-Host -NoNewline ":"
             if ($mode -eq "MANUAL" -and $fields[$fieldIdx] -eq "MINUTE") { Write-Host -NoNewline "$($currentDateTime.Minute.ToString('00'))" -BackgroundColor DarkCyan -ForegroundColor White } else { Write-Host -NoNewline "$($currentDateTime.Minute.ToString('00'))" }
-            Write-Host -NoNewline ":$($currentDateTime.Second.ToString('00'))"
+            if ($mode -eq "MANUAL") { Write-Host -NoNewline ":00" } else { Write-Host -NoNewline ":$($currentDateTime.Second.ToString('00'))" }
             Write-Host ""
 
             Write-Host ""
@@ -133,9 +136,96 @@ function Run-TimeSimulator($sp, $mode) {
                     }
                     $lastSend = 0
                 }
+                # Forçar segundos a 00 em todos os ajustes manuais
+                $currentDateTime = Get-Date -Year $currentDateTime.Year -Month $currentDateTime.Month -Day $currentDateTime.Day -Hour $currentDateTime.Hour -Minute $currentDateTime.Minute -Second 0
             }
             if ($key.Key -eq "Escape" -or $key.Key -eq "Q") { return }
         }
+        Start-Sleep -Milliseconds 50
+    }
+}
+
+# --- Modo Leitura (Escuta Passiva) ---
+function Show-ReadDisplay($date, $time, $id, $raw, $count) {
+    Clear-HostSafe
+    Write-Host "==============================================="
+    Write-Host " MODO LEITURA - DATA/HORA DO BARRAMENTO CAN"
+    Write-Host "==============================================="
+    Write-Host " DATA:      $date"
+    Write-Host " HORA:      $time"
+    Write-Host "-----------------------------------------------"
+    Write-Host " ULTIMO ID: $id"
+    Write-Host " RAW:       $raw" -ForegroundColor Gray
+    Write-Host "-----------------------------------------------"
+    Write-Host " FRAMES CAN RECEBIDOS: $count" -ForegroundColor Cyan
+    Write-Host "==============================================="
+    Write-Host " [Q ou ESC]  Voltar ao Menu"
+}
+
+function Run-ReadMode($sp) {
+    $lastDate = "---"; $lastTime = "---"
+    $lastID   = "---"; $lastRaw  = "---"
+    $rxCount  = 0
+    
+    $sp.ReadTimeout = 500
+    Show-ReadDisplay $lastDate $lastTime $lastID $lastRaw $rxCount
+
+    while ($true) {
+        $refresh = $false
+        try {
+            if ($sp.BytesToRead -gt 0) {
+                # Lê o que estiver no buffer
+                $data = $sp.ReadExisting()
+                $lines = $data.Split("`r")
+                
+                foreach ($l in $lines) {
+                    $line = $l.Trim()
+                    if ($line.Length -ge 5 -and $line.StartsWith("t")) {
+                        $rxCount++
+                        $refresh = $true
+                        try {
+                            $idStr = $line.Substring(1, 3)
+                            $id = [Convert]::ToInt32($idStr, 16)
+                            $len = [int]($line.Substring(4, 1))
+                            
+                            if (($id -eq 0x5E2 -or $id -eq 0x12F) -and $line.Length -ge (5 + $len * 2)) {
+                                $dataHex = $line.Substring(5, $len * 2)
+                                $bytes = (0..($len-1) | ForEach-Object { [Convert]::ToInt32($dataHex.Substring($_*2,2), 16) })
+                                
+                                if ($bytes.Count -gt 6) {
+                                    $lastID = "0x$idStr"
+                                    $lastRaw = ($bytes | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                                    
+                                    if ($id -eq 0x5E2) {
+                                        $year = 2000 + $bytes[1]; $hour = $bytes[2]; $min = $bytes[3]; $sec = $bytes[4]
+                                        $day = $bytes[5]; $month = [int](($bytes[6] - 1) / 4)
+                                    } else {
+                                        $hour = $bytes[1]; $min = $bytes[2]; $sec = $bytes[3]
+                                        $month = [int](($bytes[4] - 1) / 4)
+                                        $year = 2000 + $bytes[5]; $day = $bytes[6]
+                                    }
+                                    
+                                    if ($month -ge 1 -and $month -le 12 -and $day -ge 1 -and $day -le 31) {
+                                        $lastDate = "{0:D2}/{1:D2}/{2}" -f $day, $month, $year
+                                        $lastTime = "{0:D2}:{1:D2}:{2:D2}" -f $hour, $min, $sec
+                                    }
+                                }
+                            }
+                        } catch { } # Frame mal-formado, ignorar
+                    }
+                }
+            }
+        } catch { }
+
+        if ($refresh) {
+            Show-ReadDisplay $lastDate $lastTime $lastID $lastRaw $rxCount
+        }
+
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            if ($key.Key -eq "Escape" -or $key.Key -eq "Q") { break }
+        }
+        
         Start-Sleep -Milliseconds 50
     }
 }
@@ -152,12 +242,14 @@ try {
         Write-Host " KIA CEED 2015 TIME SIMULATOR"
         Write-Host " 1) Sincronizar com Relogio do PC (AUTO)"
         Write-Host " 2) Ajuste Manual (Setas)"
+        Write-Host " 3) Leitura do Barramento CAN (Passivo)"
         Write-Host " 0) Sair"
         $opt = Read-Host "`nEscolha uma opcao"
         
         switch ($opt) {
             "1" { Run-TimeSimulator $sp "AUTO" }
             "2" { Run-TimeSimulator $sp "MANUAL" }
+            "3" { Run-ReadMode $sp }
             "0" { break }
         }
     }
