@@ -79,6 +79,7 @@ class TxEngine:
         # Heartbeat Vital
         self.runtime.send_frame(0x100, [0x62, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00])
         self.tx_count += 1
+        if self.rx_engine: self.rx_engine.update_id_state(0x100, [0x62, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00], "TX")
         
         # ID 0x114 (Modo e Frequência)
         prefix = 0x11 # FM default
@@ -96,18 +97,36 @@ class TxEngine:
         elif station["band"] == "BT":
             prefix = 0x08
             
-        self.runtime.send_frame(0x114, [prefix, 0x60, 0x00, 0x01, 0x00, 0x00, suffix[0], suffix[1]])
-        self.runtime.send_frame(0x115, [0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        p114 = [prefix, 0x60, 0x00, 0x01, 0x00, 0x00, suffix[0], suffix[1]]
+        self.runtime.send_frame(0x114, p114)
+        p115 = [0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        self.runtime.send_frame(0x115, p115)
         self.tx_count += 2
+        if self.rx_engine:
+            self.rx_engine.update_id_state(0x114, p114, "TX")
+            self.rx_engine.update_id_state(0x115, p115, "TX")
 
     def _send_icon_bundle(self):
         # Visibilidade de menus (Musical + GPS)
-        self.runtime.send_frame(0x169, [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        self.runtime.send_frame(0x1EB, [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        self.runtime.send_frame(0x44D, [0x40, 0x02, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF])
-        self.runtime.send_frame(0x120, [0x00, 0x00, 0x00, 0x00])
-        self.runtime.send_frame(0x506, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x00])
+        p169 = [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        p1eb = [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        p44d = [0x40, 0x02, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF]
+        p120 = [0x00, 0x00, 0x00, 0x00]
+        p506 = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x00]
+        
+        self.runtime.send_frame(0x169, p169)
+        self.runtime.send_frame(0x1EB, p1eb)
+        self.runtime.send_frame(0x44D, p44d)
+        self.runtime.send_frame(0x120, p120)
+        self.runtime.send_frame(0x506, p506)
         self.tx_count += 5
+        
+        if self.rx_engine:
+            self.rx_engine.update_id_state(0x169, p169, "TX")
+            self.rx_engine.update_id_state(0x1EB, p1eb, "TX")
+            self.rx_engine.update_id_state(0x44D, p44d, "TX")
+            self.rx_engine.update_id_state(0x120, p120, "TX")
+            self.rx_engine.update_id_state(0x506, p506, "TX")
 
     def _send_time_sync(self):
         # Dual-Bus Time Sync: 0x5E2 e 0x12F
@@ -125,6 +144,10 @@ class TxEngine:
         payload_12f = [0x4E, now.hour, now.minute, now.second, m_enc, y_short, now.day, 0xCF]
         self.runtime.send_frame(0x12F, payload_12f)
         self.tx_count += 2
+        
+        if self.rx_engine:
+            self.rx_engine.update_id_state(0x5E2, payload_5e2, "TX")
+            self.rx_engine.update_id_state(0x12F, payload_12f, "TX")
 
     def _send_current_label(self):
         # ISO-TP para exibição de texto
@@ -184,6 +207,7 @@ class TxEngine:
             cf = [0x20 + (sn & 0x0F)] + chunk
             self.runtime.send_frame(can_id, cf)
             self.tx_count += 1
+            if self.rx_engine: self.rx_engine.update_id_state(can_id, cf, "TX")
             idx += 7
             sn += 1
             time.sleep(config.ISOTP_GAP_MS / 1000.0)
@@ -236,6 +260,39 @@ class TxEngine:
             entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---"})
             raw = entry["last_raw"][:28].ljust(28)
             print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
+
+        rt_tbl = self.rx_engine.realtime_table
+
+        # --- GRUPO: REAL-TIME ID STATE ---
+        print("==================================================")
+        print(" [REAL-TIME ID STATE]")
+        print("--------------------------------------------------")
+        print(f" {'TIMESTAMP':<10}  {'ID':<6}  {'RAW':<28}  {'GROUP':<7}  {'DIR'}")
+        print(f" {'-'*10}  {'-'*6}  {'-'*28}  {'-'*7}  {'-'*4}")
+        
+        # Combinar e ordenar IDs para visualização consolidada
+        all_monitored_ids = [0x5E2, 0x12F] + radio_ids
+        for can_id in all_monitored_ids:
+            entry = rt_tbl.get(can_id, {"last_raw": "---", "last_ts": "---", "dir": "---", "group": "UNKNOWN"})
+            
+            # Formatação de Cores para a Linha Inteira conforme DIR
+            dir_str = entry["dir"]
+            ansi_color = ""
+            if dir_str == "TX":
+                ansi_color = "\033[92m" # Verde
+            elif dir_str == "RX":
+                ansi_color = "\033[93m" # Amarelo
+            
+            reset = "\033[0m"
+            raw = entry["last_raw"][:28].ljust(28)
+            ts = entry["last_ts"].ljust(10)
+            group = entry.get("group", "---").ljust(7)
+            
+            line = f" {ts}  {f'0x{can_id:03X}':<6}  {raw}  {group}  {dir_str}"
+            if ansi_color:
+                print(f"{ansi_color}{line}{reset}")
+            else:
+                print(line)
 
         if self.rx_engine.last_error:
             print(f" [ALERTA] {self.rx_engine.last_error}")

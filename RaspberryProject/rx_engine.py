@@ -24,7 +24,8 @@ class RxEngine:
         self.radio_label = "---"
         self.last_external_radio_ts = 0
         
-        # Tabela de rastreio por ID CAN (last raw + timestamp)
+        # Tabela de rastreio por ID CAN (apenas RX, atualiza apenas se o RAW mudar)
+        # Esta tabela alimenta a parte superior do dashboard.
         self.id_table = {
             # TIME
             0x5E2: {"group": "TIME",  "last_raw": "---", "last_ts": "---"},
@@ -41,6 +42,19 @@ class RxEngine:
             0x4E8: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
             0x485: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
         }
+        
+        # Tabela REAL-TIME consolidada (RX e TX, atualiza sempre)
+        self.realtime_table = {k: v.copy() for k, v in self.id_table.items()}
+        for k in self.realtime_table:
+            self.realtime_table[k].update({"dir": "---"})
+
+    def update_id_state(self, can_id, data, direction):
+        """Atualiza o estado consolidado de um ID (TX ou RX) para a tabela REAL-TIME."""
+        if can_id in self.realtime_table:
+            raw_hex = " ".join(f"{b:02X}" for b in data)
+            self.realtime_table[can_id]["last_raw"] = raw_hex
+            self.realtime_table[can_id]["last_ts"] = time.strftime("%H:%M:%S")
+            self.realtime_table[can_id]["dir"] = direction
         
         # Buffers ISO-TP para reconstrução de strings
         self.isotp_buffers = {
@@ -74,10 +88,12 @@ class RxEngine:
         can_id = frame["id"]
         data = frame["data"]
         
-        # Atualizar tabela de rastreio se o ID for monitorizado
+        # 1. Atualizar tabela REAL-TIME (sempre)
+        self.update_id_state(can_id, data, "RX")
+
+        # 2. Atualizar tabela de monitorização original (apenas se o RAW mudar)
         if can_id in self.id_table:
             raw_hex = " ".join(f"{b:02X}" for b in data)
-            # Só actualiza o timestamp se o raw mudou
             if self.id_table[can_id]["last_raw"] != raw_hex:
                 self.id_table[can_id]["last_raw"] = raw_hex
                 self.id_table[can_id]["last_ts"] = time.strftime("%H:%M:%S")
