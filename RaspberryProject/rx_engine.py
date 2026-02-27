@@ -43,11 +43,6 @@ class RxEngine:
             0x485: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
         }
         
-        # Tabela REAL-TIME consolidada (RX e TX, atualiza sempre)
-        self.realtime_table = {k: v.copy() for k, v in self.id_table.items()}
-        for k in self.realtime_table:
-            self.realtime_table[k].update({"dir": "---"})
-        
         # Buffers ISO-TP para reconstrução de strings
         self.isotp_buffers = {
             0x4E8: {"data": bytearray(), "len": 0, "sn": 0},
@@ -55,12 +50,8 @@ class RxEngine:
         }
 
     def update_id_state(self, can_id, data, direction):
-        """Atualiza o estado consolidado de um ID (TX ou RX) para a tabela REAL-TIME."""
-        if can_id in self.realtime_table:
-            raw_hex = " ".join(f"{b:02X}" for b in data)
-            self.realtime_table[can_id]["last_raw"] = raw_hex
-            self.realtime_table[can_id]["last_ts"] = time.strftime("%H:%M:%S")
-            self.realtime_table[can_id]["dir"] = direction
+        """Método depreciado após erradicação da tabela realtime. Mantido para compatibilidade sem impacto funcional."""
+        pass
 
     def start(self):
         """Loop de escuta de frames."""
@@ -88,10 +79,7 @@ class RxEngine:
         can_id = frame["id"]
         data = frame["data"]
         
-        # 1. Atualizar tabela REAL-TIME (sempre)
-        self.update_id_state(can_id, data, "RX")
-
-        # 2. Atualizar tabela de monitorização original (apenas se o RAW mudar)
+        # 1. Atualizar tabela de monitorização original (apenas se o RAW mudar)
         if can_id in self.id_table:
             raw_hex = " ".join(f"{b:02X}" for b in data)
             if self.id_table[can_id]["last_raw"] != raw_hex:
@@ -120,13 +108,24 @@ class RxEngine:
         """Verifica se o frame recebido é um eco da nossa própria transmissão."""
         if not self.tx_engine: return False
         
-        # Se for rádio (0x114), comparamos com o modo/frequência atual do Node A
-        if can_id == 0x114:
-            # Simplificação: Se o rádio do Node A estiver ativo, e o ID coincidir, 
-            # assumimos que pode ser echo se não houver atividade externa recente comprovada.
-            # Mas a forma mais segura é comparar o payload.
-            pass
-        return False # Por padrão processamos tudo, a lógica de prioridade será no TX
+        # Se enviámos pacotes nesta direção na plataforma há menos de 100-400ms, 
+        # assumimos que é eco do CANable monitorando o barramento.
+        now = time.monotonic()
+        
+        if can_id in [0x5E2, 0x12F]:
+            if (now - self.tx_engine.last_sync_1hz) < 0.2:
+                return True
+            return False
+            
+        radio_ids = [0x100, 0x114, 0x115, 0x169, 0x1EB, 0x44D, 0x120, 0x506, 0x4E8, 0x485]
+        if can_id in radio_ids:
+            # Usamos os timestamps apropriados dependendo se é bundle normal ou texto
+            if can_id in [0x4E8, 0x485] and (now - self.tx_engine.last_text_tick) < 0.4:
+                return True
+            elif (now - self.tx_engine.last_hb_10hz) < 0.2:
+                return True
+                
+        return False
 
     def _handle_radio_status(self, data):
         """Descodifica o ID 0x114 (Modo e Frequência)."""

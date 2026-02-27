@@ -197,6 +197,8 @@ class TxEngine:
         self.runtime.send_frame(can_id, ff)
         self.tx_count += 1
         
+        if self.rx_engine: self.rx_engine.update_id_state(can_id, ff, "TX")
+        
         time.sleep(config.ISOTP_GAP_MS / 1000.0)
         
         idx = 6
@@ -262,39 +264,6 @@ class TxEngine:
             raw = entry["last_raw"][:28].ljust(28)
             ts = entry["last_ts"].ljust(10)
             print(f"  {f'0x{can_id:03X}':<6}  {raw}  {ts}  {entry.get('decoded', '---')}")
-
-        rt_tbl = self.rx_engine.realtime_table
-
-        # --- GRUPO: REAL-TIME ID STATE ---
-        print("================================================================================")
-        print(" [REAL-TIME ID STATE]")
-        print("--------------------------------------------------------------------------------")
-        print(f" {'TIMESTAMP':<10}  {'ID':<6}  {'RAW':<28}  {'GROUP':<7}  {'DIR'}")
-        print(f" {'-'*10}  {'-'*6}  {'-'*28}  {'-'*7}  {'-'*4}")
-        
-        # Combinar e ordenar IDs para visualização consolidada
-        all_monitored_ids = [0x5E2, 0x12F] + radio_ids
-        for can_id in all_monitored_ids:
-            entry = rt_tbl.get(can_id, {"last_raw": "---", "last_ts": "---", "dir": "---", "group": "UNKNOWN"})
-            
-            # Formatação de Cores para a Linha Inteira conforme DIR
-            dir_str = entry["dir"]
-            ansi_color = ""
-            if dir_str == "TX":
-                ansi_color = "\033[92m" # Verde
-            elif dir_str == "RX":
-                ansi_color = "\033[93m" # Amarelo
-            
-            reset = "\033[0m"
-            raw = entry["last_raw"][:28].ljust(28)
-            ts = entry["last_ts"].ljust(10)
-            group = entry.get("group", "---").ljust(7)
-            
-            line = f" {ts}  {f'0x{can_id:03X}':<6}  {raw}  {group}  {dir_str}"
-            if ansi_color:
-                print(f"{ansi_color}{line}{reset}")
-            else:
-                print(line)
 
         if self.rx_engine.last_error:
             print(f" [ALERTA] {self.rx_engine.last_error}")
