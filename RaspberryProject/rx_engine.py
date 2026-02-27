@@ -28,25 +28,31 @@ class RxEngine:
         # Esta tabela alimenta a parte superior do dashboard.
         self.id_table = {
             # TIME
-            0x5E2: {"group": "TIME",  "last_raw": "---", "last_ts": "---"},
-            0x12F: {"group": "TIME",  "last_raw": "---", "last_ts": "---"},
+            0x5E2: {"group": "TIME",  "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x12F: {"group": "TIME",  "last_raw": "---", "last_ts": "---", "decoded": "---"},
             # RADIO
-            0x100: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x114: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x115: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x169: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x1EB: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x44D: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x120: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x506: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x4E8: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
-            0x485: {"group": "RADIO", "last_raw": "---", "last_ts": "---"},
+            0x100: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x114: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x115: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x169: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x1EB: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x44D: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x120: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x506: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x4E8: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
+            0x485: {"group": "RADIO", "last_raw": "---", "last_ts": "---", "decoded": "---"},
         }
         
         # Tabela REAL-TIME consolidada (RX e TX, atualiza sempre)
         self.realtime_table = {k: v.copy() for k, v in self.id_table.items()}
         for k in self.realtime_table:
             self.realtime_table[k].update({"dir": "---"})
+        
+        # Buffers ISO-TP para reconstrução de strings
+        self.isotp_buffers = {
+            0x4E8: {"data": bytearray(), "len": 0, "sn": 0},
+            0x485: {"data": bytearray(), "len": 0, "sn": 0}
+        }
 
     def update_id_state(self, can_id, data, direction):
         """Atualiza o estado consolidado de um ID (TX ou RX) para a tabela REAL-TIME."""
@@ -55,12 +61,6 @@ class RxEngine:
             self.realtime_table[can_id]["last_raw"] = raw_hex
             self.realtime_table[can_id]["last_ts"] = time.strftime("%H:%M:%S")
             self.realtime_table[can_id]["dir"] = direction
-        
-        # Buffers ISO-TP para reconstrução de strings
-        self.isotp_buffers = {
-            0x4E8: {"data": bytearray(), "len": 0, "sn": 0},
-            0x485: {"data": bytearray(), "len": 0, "sn": 0}
-        }
 
     def start(self):
         """Loop de escuta de frames."""
@@ -145,6 +145,9 @@ class RxEngine:
             self.radio_freq = f"{int(khz)} KHz"
         else:
             self.radio_freq = "N/A"
+            
+        if 0x114 in self.id_table:
+            self.id_table[0x114]["decoded"] = f"{self.radio_mode} {self.radio_freq}"
 
     def _handle_isotp(self, can_id, data):
         """Reconstrói strings ISO-TP (Segmentadas)."""
@@ -174,6 +177,8 @@ class RxEngine:
                 label = raw_bytes.decode('utf-16-le', errors='ignore').strip()
                 if label:
                     self.radio_label = label
+                    if can_id in self.id_table:
+                        self.id_table[can_id]["decoded"] = f"'{label}'"
             except:
                 pass
             buf["len"] = 0 # Reset buffer
@@ -202,6 +207,10 @@ class RxEngine:
             # Formato para o comando date: "YYYY-MM-DD HH:MM:SS"
             new_time_str = f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}"
             
+            # Atualizar coluna de descodificação
+            if can_id in self.id_table:
+                self.id_table[can_id]["decoded"] = new_time_str
+                
             # Debug: Mostrar sempre o último frame de tempo interpretado (mesmo que igual ao anterior)
             self.last_parsed_time = new_time_str
             

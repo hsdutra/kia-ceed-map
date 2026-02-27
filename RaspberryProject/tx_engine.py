@@ -218,17 +218,17 @@ class TxEngine:
         
         print("\033[2J\033[H", end="")
         
-        print("==================================================")
+        print("================================================================================")
         print(" KIA CEED CAN SIMULATOR - RASPBERRY NODE A")
         print(f" {now.strftime('%d/%m/%Y %H:%M:%S')}")
         print(f" TX: {self.tx_count} frames")
         rx_c = self.rx_engine.rx_count if self.rx_engine else 0
         print(f" RX: {rx_c} frames")
-        print("==================================================")
+        print("================================================================================")
         
         if not self.rx_engine:
             print(" [ERRO] RX Engine não inicializado")
-            print("==================================================")
+            print("================================================================================")
             return
 
         # --- Decoded (valores interpretados) ---
@@ -241,32 +241,34 @@ class TxEngine:
         tbl = self.rx_engine.id_table
 
         # --- GRUPO: TIME ---
-        print("--------------------------------------------------")
+        print("--------------------------------------------------------------------------------")
         print(" [TIME]")
-        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
-        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
+        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP':<10}  {'DECODIFICADO'}")
+        print(f"  {'-'*6}  {'-'*28}  {'-'*10}  {'-'*28}")
         for can_id in [0x5E2, 0x12F]:
-            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---"})
+            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---", "decoded": "---"})
             raw = entry["last_raw"][:28].ljust(28)
-            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
+            ts = entry["last_ts"].ljust(10)
+            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {ts}  {entry.get('decoded', '---')}")
 
         # --- GRUPO: RADIO ---
-        print("--------------------------------------------------")
+        print("--------------------------------------------------------------------------------")
         print(" [RADIO]")
-        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP'}")
-        print(f"  {'-'*6}  {'-'*28}  {'-'*8}")
+        print(f"  {'ID':<6}  {'ÚLTIMO RAW':<28}  {'TIMESTAMP':<10}  {'DECODIFICADO'}")
+        print(f"  {'-'*6}  {'-'*28}  {'-'*10}  {'-'*28}")
         radio_ids = [0x100, 0x114, 0x115, 0x169, 0x1EB, 0x44D, 0x120, 0x506, 0x4E8, 0x485]
         for can_id in radio_ids:
-            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---"})
+            entry = tbl.get(can_id, {"last_raw": "---", "last_ts": "---", "decoded": "---"})
             raw = entry["last_raw"][:28].ljust(28)
-            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {entry['last_ts']}")
+            ts = entry["last_ts"].ljust(10)
+            print(f"  {f'0x{can_id:03X}':<6}  {raw}  {ts}  {entry.get('decoded', '---')}")
 
         rt_tbl = self.rx_engine.realtime_table
 
         # --- GRUPO: REAL-TIME ID STATE ---
-        print("==================================================")
+        print("================================================================================")
         print(" [REAL-TIME ID STATE]")
-        print("--------------------------------------------------")
+        print("--------------------------------------------------------------------------------")
         print(f" {'TIMESTAMP':<10}  {'ID':<6}  {'RAW':<28}  {'GROUP':<7}  {'DIR'}")
         print(f" {'-'*10}  {'-'*6}  {'-'*28}  {'-'*7}  {'-'*4}")
         
@@ -297,5 +299,5 @@ class TxEngine:
         if self.rx_engine.last_error:
             print(f" [ALERTA] {self.rx_engine.last_error}")
 
-        print("==================================================")
+        print("================================================================================")
         print(" Ctrl+C para encerrar.")
